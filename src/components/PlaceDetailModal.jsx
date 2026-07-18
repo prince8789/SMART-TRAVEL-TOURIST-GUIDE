@@ -50,10 +50,10 @@ export function PlaceDetailModal({ token, place, userCenter, onClose }) {
           <button
             className="primary-btn"
             onClick={async () => {
-              await userApi.visit(token, { placeName: place.name, lat: place.lat, lng: place.lng });
+              await userApi.viewed(token, { placeName: place.name, lat: place.lat, lng: place.lng, category: place.category });
             }}
           >
-            Mark as Visited
+            Save to Viewed
           </button>
         </div>
       </div>

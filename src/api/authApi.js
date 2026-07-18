@@ -5,8 +5,6 @@ async function request(path, body) {
 }
 export const authApi = {
   register: (body) => request('/api/auth/register', body),
-  verifyOtp: (body) => request('/api/auth/verify-otp', body),
-  resendOtp: (body) => request('/api/auth/resend-otp', body),
   forgotPassword: (body) => request('/api/auth/forgot-password', body),
   resetPassword: (body) => request('/api/auth/reset-password', body),
   login: (body) => request('/api/auth/login', body)

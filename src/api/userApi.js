@@ -12,7 +12,9 @@ async function json(res) {
 }
 export const userApi = {
   visit: (token, body) => fetch(`${base}/api/user/visit`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify(body) }).then(json),
+  viewed: (token, body) => fetch(`${base}/api/user/viewed`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify(body) }).then(json),
   history: (token) => fetch(`${base}/api/user/history`, { headers: { Authorization: `Bearer ${token}` } }).then(json),
+  viewedPlaces: (token) => fetch(`${base}/api/user/viewed`, { headers: { Authorization: `Bearer ${token}` } }).then(json),
   updateHistory: (token, visitId, body) => fetch(`${base}/api/user/history/${visitId}`, { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify(body) }).then(json),
   deleteHistory: (token, visitId) => fetch(`${base}/api/user/history/${visitId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).then(json),
   lookupPlaceExtra: (query) => fetch(`${base}/api/admin/place-extra/lookup?${new URLSearchParams(query)}`).then(json)

@@ -4,7 +4,6 @@ import { userApi } from '../api/userApi.js';
 import { PlacesSidebar } from './PlacesSidebar.jsx';
 
 const defaultCenter = [28.6139, 77.209];
-const historyKey = 'smartTravelVisitedPlaces';
 
 const indiaTouristPlaces = [
   {
@@ -501,22 +500,6 @@ function escapeHtml(value = '') {
     .replaceAll("'", '&#039;');
 }
 
-function saveLocalVisit(place) {
-  const entry = {
-    id: `${place.name}-${place.lat}-${place.lng}-${Date.now()}`,
-    placeName: place.name,
-    lat: place.lat,
-    lng: place.lng,
-    category: place.category,
-    summary: describePlace(place),
-    favorite: false,
-    note: '',
-    visitedAt: new Date().toISOString()
-  };
-  const existing = JSON.parse(localStorage.getItem(historyKey) || '[]');
-  localStorage.setItem(historyKey, JSON.stringify([entry, ...existing].slice(0, 100)));
-}
-
 const userIcon = L.divIcon({
   className: 'user-location-marker',
   html: '<span></span>',
@@ -540,8 +523,10 @@ export function MapPage({ token }) {
   const markersRef = useRef(new Map());
   const routeRef = useRef(null);
   const userMarkerRef = useRef(null);
+  const recordedVisitIds = useRef(new Set());
   const [places, setPlaces] = useState([]);
   const [center, setCenter] = useState(defaultCenter);
+  const [currentLocation, setCurrentLocation] = useState(null);
   const [selectedId, setSelectedId] = useState('');
   const [placeExtras, setPlaceExtras] = useState({});
   const [notice, setNotice] = useState('Finding your location...');
@@ -562,7 +547,9 @@ export function MapPage({ token }) {
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setCenter([pos.coords.latitude, pos.coords.longitude]);
+        const location = [pos.coords.latitude, pos.coords.longitude];
+        setCenter(location);
+        setCurrentLocation(location);
         setNotice('Using your current location');
       },
       () => {
@@ -570,6 +557,12 @@ export function MapPage({ token }) {
       },
       { enableHighAccuracy: true, timeout: 9000, maximumAge: 120000 }
     );
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => setCurrentLocation([pos.coords.latitude, pos.coords.longitude]),
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 30000 }
+    );
+    return () => navigator.geolocation.clearWatch(watchId);
   }, []);
 
   useEffect(() => {
@@ -712,25 +705,38 @@ export function MapPage({ token }) {
     }
   }, [center, drawFallbackRoute]);
 
-  const recordVisit = useCallback(async (place) => {
-    saveLocalVisit(place);
+  const recordView = useCallback(async (place) => {
     if (!token) return;
     try {
-      await userApi.visit(token, {
+      await userApi.viewed(token, {
         placeName: place.name,
         lat: place.lat,
         lng: place.lng,
         category: place.category,
         summary: describePlace(place)
       });
-    } catch {
-      // Local history keeps the click visible even when the backend is offline.
-    }
+    } catch {}
   }, [token]);
+
+  const recordVisitIfNearby = useCallback(async (place) => {
+    if (!token || !currentLocation || recordedVisitIds.current.has(place.id)) return;
+    if (distanceKm(currentLocation, [place.lat, place.lng]) > 0.1) return;
+    recordedVisitIds.current.add(place.id);
+    try {
+      const result = await userApi.visit(token, {
+        placeName: place.name, lat: place.lat, lng: place.lng, category: place.category,
+        summary: describePlace(place), userLat: currentLocation[0], userLng: currentLocation[1]
+      });
+      if (result.ok) setNotice(`Visit recorded: you are within 100 m of ${place.name}`);
+    } catch {
+      recordedVisitIds.current.delete(place.id);
+    }
+  }, [currentLocation, token]);
 
   const selectPlace = useCallback((place) => {
     setSelectedId(place.id);
-    recordVisit(place);
+    recordView(place);
+    recordVisitIfNearby(place);
     drawRoadRoute(place);
 
     if (!placeExtras[place.id]) {
@@ -740,7 +746,11 @@ export function MapPage({ token }) {
         })
         .catch(() => {});
     }
-  }, [drawRoadRoute, placeExtras, recordVisit]);
+  }, [drawRoadRoute, placeExtras, recordView, recordVisitIfNearby]);
+
+  useEffect(() => {
+    if (selectedPlace) recordVisitIfNearby(selectedPlace);
+  }, [recordVisitIfNearby, selectedPlace]);
 
   const filteredPlaces = useMemo(() => {
     const filtered = places.filter((place) => {

@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { userApi } from '../api/userApi.js';
 
-const historyKey = 'smartTravelVisitedPlaces';
 const historyNotesKey = 'smartTravelHistoryNotes';
 const favoriteKey = 'smartTravelFavoritePlaces';
 
@@ -19,10 +18,6 @@ function readJson(key, fallback) {
   }
 }
 
-function localHistory() {
-  return readJson(historyKey, '[]');
-}
-
 function localNotes() {
   return readJson(historyNotesKey, '{}');
 }
@@ -35,12 +30,8 @@ function entryKey(item = {}) {
   return item._id || item.id || (item.visitedAt ? String(new Date(item.visitedAt).getTime()) : `${item.placeName}-${item.lat || ''}-${item.lng || ''}`);
 }
 
-function saveLocalOnly(items) {
-  localStorage.setItem(historyKey, JSON.stringify(items.filter((item) => item.id)));
-}
-
 export function VisitHistory({ token }) {
-  const [items, setItems] = useState(localHistory());
+  const [items, setItems] = useState([]);
   const [notes, setNotes] = useState(localNotes());
   const [favorites, setFavorites] = useState(localFavorites());
   const [selectedKey, setSelectedKey] = useState('');
@@ -53,14 +44,14 @@ export function VisitHistory({ token }) {
       .then((res) => {
         if (!alive) return;
         if (res.ok) {
-          setItems([...(res.visitedPlaces || []), ...localHistory()]);
+          setItems(res.visitedPlaces || []);
           setError('');
         } else {
           setError(res.message || 'Could not load server history.');
         }
       })
       .catch(() => {
-        if (alive) setError('Showing saved local history because the server is unavailable.');
+        if (alive) setError('Could not load your History right now.');
       });
     return () => {
       alive = false;
@@ -98,7 +89,6 @@ export function VisitHistory({ token }) {
     const key = entryKey(item);
     setItems((current) => {
       const next = current.filter((historyItem) => entryKey(historyItem) !== key);
-      saveLocalOnly(next);
       return next;
     });
     setSelectedKey('');
@@ -127,7 +117,7 @@ export function VisitHistory({ token }) {
         <div className="section-head">
           <div>
             <p className="eyebrow">Travel Log</p>
-            <h2>Viewed places</h2>
+            <h2>History</h2>
           </div>
         </div>
         {error && <p className="history-note">{error}</p>}
@@ -138,7 +128,7 @@ export function VisitHistory({ token }) {
             {sortedItems.length === 0 && (
               <div className="empty-state">
                 <h3>You haven't visited any places; your history is empty</h3>
-                <p>Open the dashboard and select a tourist place to start your travel log.</p>
+                <p>History is added automatically after you reach a place within 100 metres.</p>
               </div>
             )}
 

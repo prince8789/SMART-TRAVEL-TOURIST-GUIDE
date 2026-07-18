@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { Register } from './components/Register.jsx';
-import { VerifyOTP } from './components/VerifyOTP.jsx';
 import { Login } from './components/Login.jsx';
 import { MapPage } from './components/MapPage.jsx';
 import { VisitHistory } from './components/VisitHistory.jsx';
@@ -41,7 +40,9 @@ function DashboardShell({ token, user, onLogout }) {
         onMenuToggle={() => setMobileMenuOpen((value) => !value)}
         mobileMenuOpen={mobileMenuOpen}
       />
-      <main className="page-content">
+      <main className="page-content" onPointerDown={(event) => {
+        if (!event.target.closest('.chat-widget')) window.dispatchEvent(new Event('smarttravel:screen-interaction'));
+      }}>
         {activeTab === 'history' ? (
           <VisitHistory token={token} />
         ) : activeTab === 'profile' ? (
@@ -63,18 +64,10 @@ function LoginPage({ onLogin, goRegister }) {
   );
 }
 
-function RegisterPage({ onOtpRequested, goLogin }) {
+function RegisterPage({ onRegistered, goLogin }) {
   return (
     <AuthLayout variant="register">
-      <Register onOtpRequested={onOtpRequested} onGoLogin={goLogin} />
-    </AuthLayout>
-  );
-}
-
-function VerifyPage({ email, goLogin, goRegister }) {
-  return (
-    <AuthLayout variant="verify">
-      <VerifyOTP email={email} onVerified={goLogin} onBack={goRegister} />
+      <Register onRegistered={onRegistered} onGoLogin={goLogin} />
     </AuthLayout>
   );
 }
@@ -97,7 +90,6 @@ function AdminPage({ token, onLogout }) {
 
 export default function App() {
   const navigate = useNavigate();
-  const [pendingEmail, setPendingEmail] = useState('');
   const [token, setToken] = useState(localStorage.getItem('userToken') || '');
   const [user, setUser] = useState(null);
   const [adminToken, setAdminToken] = useState(localStorage.getItem('adminToken') || '');
@@ -142,15 +134,11 @@ export default function App() {
         path="/register"
         element={
           <RegisterPage
-            onOtpRequested={(email) => {
-              setPendingEmail(email);
-              navigate('/verify-otp');
-            }}
+            onRegistered={handleUserLogin}
             goLogin={() => navigate('/login')}
           />
         }
       />
-      <Route path="/verify-otp" element={<VerifyPage email={pendingEmail} goLogin={() => navigate('/login')} goRegister={() => navigate('/register')} />} />
       <Route path="/admin-login" element={<AdminLoginPage onLogin={handleAdminLogin} goRegister={() => navigate('/register')} />} />
       <Route
         path="/admin"

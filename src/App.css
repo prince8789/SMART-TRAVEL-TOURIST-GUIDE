@@ -1074,6 +1074,10 @@ button {
   margin-bottom: 10px;
 }
 
+.chat-title > div { display: grid; gap: 2px; }
+.chat-title small { color: var(--muted); font-size: .76rem; }
+.typing { font-style: italic; opacity: .8; }
+
 .chat-compose input {
   flex: 1;
   min-width: 0;
@@ -1140,6 +1144,13 @@ button {
 .assistant-bubble {
   fill: rgba(255, 255, 255, 0.96);
 }
+
+.orbit { fill: none; stroke: rgba(255,255,255,.72); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 5 5; }
+.bot { fill: #fff; stroke: #073b6d; stroke-width: 2.5; }
+.antenna, .smile { fill: none; stroke: #073b6d; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.eye { fill: #11a9c6; }
+.pin { fill: #ff8a5b; stroke: #fff; stroke-width: 2; }
+.pin-dot { fill: #fff; }
 
 .assistant-pin,
 .assistant-spark {
