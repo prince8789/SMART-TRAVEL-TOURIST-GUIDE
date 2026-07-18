@@ -523,10 +523,12 @@ export function MapPage({ token }) {
   const markersRef = useRef(new Map());
   const routeRef = useRef(null);
   const userMarkerRef = useRef(null);
+  const locationWatchRef = useRef(null);
   const recordedVisitIds = useRef(new Set());
   const [places, setPlaces] = useState([]);
   const [center, setCenter] = useState(defaultCenter);
   const [currentLocation, setCurrentLocation] = useState(null);
+  const [locationStatus, setLocationStatus] = useState('requesting');
   const [selectedId, setSelectedId] = useState('');
   const [placeExtras, setPlaceExtras] = useState({});
   const [notice, setNotice] = useState('Finding your location...');
@@ -539,31 +541,47 @@ export function MapPage({ token }) {
 
   const selectedPlace = useMemo(() => places.find((place) => place.id === selectedId) || null, [places, selectedId]);
 
-  useEffect(() => {
+  const requestLocation = useCallback(() => {
     if (!navigator.geolocation) {
-      setNotice('Geolocation is unavailable. Showing New Delhi.');
+      setLocationStatus('unavailable');
+      setNotice('Location is unavailable in this browser. Accurate distance cannot be calculated.');
       return;
     }
-
+    setLocationStatus('requesting');
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const location = [pos.coords.latitude, pos.coords.longitude];
+        localStorage.setItem('smartTravelLocationPermission', 'granted');
         setCenter(location);
         setCurrentLocation(location);
-        setNotice('Using your current location');
+        setLocationStatus('granted');
+        setNotice('Using your current location for accurate distances');
+        if (locationWatchRef.current !== null) navigator.geolocation.clearWatch(locationWatchRef.current);
+        locationWatchRef.current = navigator.geolocation.watchPosition(
+          (position) => setCurrentLocation([position.coords.latitude, position.coords.longitude]),
+          () => {},
+          { enableHighAccuracy: true, maximumAge: 30000 }
+        );
       },
       () => {
-        setNotice('Location permission denied. Showing New Delhi.');
+        localStorage.setItem('smartTravelLocationPermission', 'denied');
+        setLocationStatus('denied');
+        setNotice('Location permission is needed to calculate accurate distances.');
       },
       { enableHighAccuracy: true, timeout: 9000, maximumAge: 120000 }
     );
-    const watchId = navigator.geolocation.watchPosition(
-      (pos) => setCurrentLocation([pos.coords.latitude, pos.coords.longitude]),
-      () => {},
-      { enableHighAccuracy: true, maximumAge: 30000 }
-    );
-    return () => navigator.geolocation.clearWatch(watchId);
   }, []);
+
+  useEffect(() => {
+    if (localStorage.getItem('smartTravelLocationPermission') !== 'denied') requestLocation();
+    else {
+      setLocationStatus('denied');
+      setNotice('Enable location to calculate accurate distances.');
+    }
+    return () => {
+      if (locationWatchRef.current !== null) navigator.geolocation.clearWatch(locationWatchRef.current);
+    };
+  }, [requestLocation]);
 
   useEffect(() => {
     const [lat, lon] = center;
@@ -600,7 +618,7 @@ export function MapPage({ token }) {
               lat: latv,
               lng: lngv,
               tags,
-              distanceKm: distanceKm(center, [latv, lngv]).toFixed(1),
+              distanceKm: currentLocation ? distanceKm(currentLocation, [latv, lngv]).toFixed(1) : null,
               rating: tags.stars || tags.rating || tags.wikidata
             };
           })
@@ -609,7 +627,7 @@ export function MapPage({ token }) {
         const curated = indiaTouristPlaces.map((place) => ({
           ...place,
           filterCategory: categoryGroup(place.tags, place.category),
-          distanceKm: distanceKm(center, [place.lat, place.lng]).toFixed(1),
+          distanceKm: currentLocation ? distanceKm(currentLocation, [place.lat, place.lng]).toFixed(1) : null,
           rating: 'Famous palace'
         }));
 
@@ -620,7 +638,7 @@ export function MapPage({ token }) {
             seen.add(key);
             return true;
           })
-          .sort((a, b) => Number(a.distanceKm) - Number(b.distanceKm));
+          .sort((a, b) => (a.distanceKm === null ? 1 : b.distanceKm === null ? -1 : Number(a.distanceKm) - Number(b.distanceKm)));
         setPlaces(mapped);
         if (mapped[0]) setSelectedId((current) => current || mapped[0].id);
       })
@@ -629,9 +647,9 @@ export function MapPage({ token }) {
           const curated = indiaTouristPlaces.map((place) => ({
             ...place,
             filterCategory: categoryGroup(place.tags, place.category),
-            distanceKm: distanceKm(center, [place.lat, place.lng]).toFixed(1),
+            distanceKm: currentLocation ? distanceKm(currentLocation, [place.lat, place.lng]).toFixed(1) : null,
             rating: 'Famous India destination'
-          })).sort((a, b) => Number(a.distanceKm) - Number(b.distanceKm));
+          })).sort((a, b) => (a.distanceKm === null ? 1 : b.distanceKm === null ? -1 : Number(a.distanceKm) - Number(b.distanceKm)));
           setPlaces(curated);
           if (curated[0]) setSelectedId((current) => current || curated[0].id);
           setNotice('Showing curated India tourist places');
@@ -642,6 +660,12 @@ export function MapPage({ token }) {
 
     return () => controller.abort();
   }, [center]);
+
+  useEffect(() => {
+    if (!currentLocation) return;
+    setPlaces((current) => current.map((place) => ({ ...place, distanceKm: distanceKm(currentLocation, [place.lat, place.lng]).toFixed(1) }))
+      .sort((a, b) => Number(a.distanceKm) - Number(b.distanceKm)));
+  }, [currentLocation]);
 
   useEffect(() => {
     if (!mapRef.current || leafletMapRef.current) return;
@@ -668,23 +692,27 @@ export function MapPage({ token }) {
 
   const drawFallbackRoute = useCallback((place) => {
     const map = leafletMapRef.current;
-    if (!map) return;
+    if (!map || !currentLocation) return;
     if (routeRef.current) routeRef.current.remove();
-    routeRef.current = L.polyline([center, [place.lat, place.lng]], {
+    routeRef.current = L.polyline([currentLocation, [place.lat, place.lng]], {
       color: '#0b5cab',
       weight: 5,
       opacity: 0.75,
       dashArray: '8 10'
     }).addTo(map);
     map.fitBounds(routeRef.current.getBounds(), { padding: [44, 44], maxZoom: 15 });
-  }, [center]);
+  }, [currentLocation]);
 
   const drawRoadRoute = useCallback(async (place) => {
     const map = leafletMapRef.current;
     if (!map) return;
+    if (!currentLocation) {
+      setNotice('Enable location to calculate an accurate route and distance.');
+      return;
+    }
     setRouteLoading(true);
     try {
-      const url = `https://router.project-osrm.org/route/v1/driving/${center[1]},${center[0]};${place.lng},${place.lat}?overview=full&geometries=geojson`;
+      const url = `https://router.project-osrm.org/route/v1/driving/${currentLocation[1]},${currentLocation[0]};${place.lng},${place.lat}?overview=full&geometries=geojson`;
       const data = await fetch(url).then((r) => {
         if (!r.ok) throw new Error('Route service failed');
         return r.json();
@@ -703,7 +731,7 @@ export function MapPage({ token }) {
     } finally {
       setRouteLoading(false);
     }
-  }, [center, drawFallbackRoute]);
+  }, [currentLocation, drawFallbackRoute]);
 
   const recordView = useCallback(async (place) => {
     if (!token) return;
@@ -737,7 +765,8 @@ export function MapPage({ token }) {
     setSelectedId(place.id);
     recordView(place);
     recordVisitIfNearby(place);
-    drawRoadRoute(place);
+    if (currentLocation) drawRoadRoute(place);
+    else setNotice('Enable location to calculate an accurate route and distance.');
 
     if (!placeExtras[place.id]) {
       userApi.lookupPlaceExtra({ placeName: place.name, lat: place.lat, lng: place.lng })
@@ -746,7 +775,7 @@ export function MapPage({ token }) {
         })
         .catch(() => {});
     }
-  }, [drawRoadRoute, placeExtras, recordView, recordVisitIfNearby]);
+  }, [currentLocation, drawRoadRoute, placeExtras, recordView, recordVisitIfNearby]);
 
   useEffect(() => {
     if (selectedPlace) recordVisitIfNearby(selectedPlace);
@@ -763,6 +792,8 @@ export function MapPage({ token }) {
         const scoreDiff = fameScore(b) - fameScore(a);
         if (scoreDiff !== 0) return scoreDiff;
       }
+      if (a.distanceKm === null) return 1;
+      if (b.distanceKm === null) return -1;
       return Number(a.distanceKm) - Number(b.distanceKm);
     });
   }, [places, query, sortMode, type]);
@@ -776,11 +807,14 @@ export function MapPage({ token }) {
     const map = leafletMapRef.current;
     if (!map) return;
 
-    if (!userMarkerRef.current) {
-      userMarkerRef.current = L.marker(center, { icon: userIcon, title: 'You are here', zIndexOffset: 900 }).addTo(map);
+    if (currentLocation && !userMarkerRef.current) {
+      userMarkerRef.current = L.marker(currentLocation, { icon: userIcon, title: 'You are here', zIndexOffset: 900 }).addTo(map);
       userMarkerRef.current.bindPopup('<strong>You are here</strong>');
-    } else {
-      userMarkerRef.current.setLatLng(center);
+    } else if (currentLocation && userMarkerRef.current) {
+      userMarkerRef.current.setLatLng(currentLocation);
+    } else if (userMarkerRef.current) {
+      userMarkerRef.current.remove();
+      userMarkerRef.current = null;
     }
 
     markersRef.current.forEach((marker) => marker.remove());
@@ -810,7 +844,7 @@ export function MapPage({ token }) {
     });
 
     requestAnimationFrame(() => map.invalidateSize());
-  }, [center, filteredPlaces, placeExtras, selectPlace, selectedId]);
+  }, [currentLocation, filteredPlaces, placeExtras, selectPlace, selectedId]);
 
   useEffect(() => {
     if (!selectedPlace || !leafletMapRef.current) return;
@@ -838,6 +872,7 @@ export function MapPage({ token }) {
           <div className="map-status">
             {routeLoading && <span className="notice-pill">Drawing route...</span>}
             {notice && <span className="notice-pill">{notice}</span>}
+            {locationStatus !== 'granted' && <button className="secondary-btn location-btn" type="button" onClick={requestLocation}>Enable location</button>}
           </div>
         </div>
 

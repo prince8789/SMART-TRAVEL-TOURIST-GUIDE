@@ -40,7 +40,7 @@ export function PlaceCard({ place, active, extra, onView }) {
       </div>
       <p className="place-description">{description}</p>
       <div className="place-meta">
-        <span>{place.distanceKm} km away</span>
+        <span>{place.distanceKm === null ? 'Location required for distance' : `${place.distanceKm} km away`}</span>
         <span>{label}</span>
         {place.rating && <span>Info: {place.rating}</span>}
       </div>

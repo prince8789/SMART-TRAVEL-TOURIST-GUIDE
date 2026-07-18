@@ -80,7 +80,7 @@ export function PlacesSidebar({
                 <span className="subject-rank">{String(index + 1).padStart(2, '0')}</span>
                 <span className="subject-copy">
                   <strong>{place.name}</strong>
-                  <span>{place.distanceKm} km away - {place.category}</span>
+                  <span>{place.distanceKm === null ? 'Location required for distance' : `${place.distanceKm} km away`} - {place.category}</span>
                   <p>{place.summary || place.tags?.wikipedia || `A popular ${place.category} nearby.`}</p>
                 </span>
                 <span className="subject-arrow" aria-hidden="true">View</span>
@@ -103,7 +103,7 @@ export function PlacesSidebar({
               <span className="subject-rank">{String(index + 1).padStart(2, '0')}</span>
               <span className="subject-copy">
                 <strong>{place.name}</strong>
-                <span>{place.distanceKm} km away - {place.category}</span>
+                <span>{place.distanceKm === null ? 'Location required for distance' : `${place.distanceKm} km away`} - {place.category}</span>
                 <p>{place.summary || place.tags?.wikipedia || `A nearby ${place.category} worth exploring.`}</p>
               </span>
               <span className="subject-arrow" aria-hidden="true">View</span>
